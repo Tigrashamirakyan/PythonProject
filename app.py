@@ -1,40 +1,46 @@
-# Импортируем библиотеку streamlit для создания веб-интерфейса
 import streamlit as st
-# Импортируем функцию обработки из файла process.py
-from process import process_files
+import json
+import requests
+from process import process_text_files
 
-# Заголовок приложения
+st.set_page_config(page_title="🔍 Векторизация текста и файлов", layout="wide")
+
 st.title("🔍 Векторизация текста и файлов")
 
-# 1. Загрузка файлов
-# Пользователь может загрузить один или несколько файлов (поддерживаемые типы: txt, pdf, docx, csv)
-uploaded_files = st.file_uploader(
-    "Загрузите файлы (TXT, PDF, DOCX, CSV)",
-    type=['txt', 'pdf', 'docx', 'csv'],
-    accept_multiple_files=True
-)
+# Заголовок
+st.markdown("### 🚀 Выберите файлы и модель векторизации")
 
-# 2. Ввод текста вручную
-manual_text = st.text_area("Или введите текст вручную")
+# Загрузка файлов
+uploaded_files = st.file_uploader("📂 Загрузите файлы (TXT, PDF)", accept_multiple_files=True)
 
-# 3. Выбор модели векторизации
-# Список моделей – OpenAI, Yandex и Sentence Transformer
-model = st.selectbox("Выберите модель векторизации", ["openai", "yandex", "sentence_transformer"])
+# Выбор модели
+model = st.selectbox("🧠 Выберите модель векторизации", ["openai", "yandex", "sentence_transformer"])
 
-# 4. Ввод Webhook URL
-# Этот URL будет использоваться для отправки результатов в виде JSON
-webhook_url = st.text_input("Webhook URL", "https://example.com/webhook")
+# Ввод Webhook URL
+webhook_url = st.text_input("🌐 Введите Webhook URL", "https://example.com/webhook")
 
-# 5. Кнопка для запуска процесса
 if st.button("🧠 Векторизировать"):
-    # Проверяем, что пользователь загрузил хотя бы один файл или ввёл текст
-    if not uploaded_files and not manual_text:
-        st.error("Пожалуйста, загрузите файл или введите текст вручную.")
-    else:
-        # Вызываем функцию process_files, которая объединяет текст из файлов и из ручного ввода,
-        # затем разбивает текст на части, векторизует их и отправляет результат на Webhook.
-        result = process_files(uploaded_files, manual_text, model, webhook_url)
-        if result:
-            st.success("Файлы успешно обработаны и данные отправлены на Webhook!")
+    if uploaded_files and webhook_url:
+        st.info("⏳ Обработка файлов...")
+
+        # Обрабатываем файлы
+        chunks, vectors = process_text_files(uploaded_files, model)
+
+        # Формируем JSON
+        data = {
+            "status": "success",
+            "model": model,
+            "chunks": [{"chunk_id": i+1, "text": chunk, "vector": vector}
+                       for i, (chunk, vector) in enumerate(zip(chunks, vectors))]
+        }
+
+        # Отправляем Webhook
+        response = requests.post(webhook_url, json=data)
+
+        if response.status_code == 200:
+            st.success("✅ Результаты успешно отправлены!")
         else:
-            st.error("Произошла ошибка при обработке данных.")
+            st.error("❌ Ошибка при отправке данных!")
+
+    else:
+        st.warning("⚠ Пожалуйста, загрузите файлы и укажите Webhook URL!")
