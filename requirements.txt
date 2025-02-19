@@ -1,0 +1,7 @@
+streamlit
+requests
+pdfplumber
+sentence-transformers
+openai
+python-docx
+python-dotenv
