@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения из файла .env
 load_dotenv()
 
-
 # ------------------------
 # 1. Извлечение текста из файлов
 # ------------------------
@@ -45,7 +44,6 @@ def extract_text_from_file(file):
     else:
         return None
 
-
 # ------------------------
 # 2. Разбиение текста на чанки
 # ------------------------
@@ -68,7 +66,6 @@ def split_text(text, min_chunk=256, max_chunk=512, overlap=50):
         start = start + max_chunk - overlap
     return chunks
 
-
 def split_text_by_paragraphs(text):
     """
     Разбивает текст на абзацы.
@@ -77,16 +74,13 @@ def split_text_by_paragraphs(text):
     paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
     return paragraphs
 
-
 # ------------------------
 # 3. Векторизация текста
 # ------------------------
 
 # 3.1. Векторизация через OpenAI
 import openai
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
 
 def get_openai_embedding(text):
     """
@@ -100,12 +94,9 @@ def get_openai_embedding(text):
         print("Ошибка при вызове OpenAI:", e)
         return None
 
-
 # 3.2. Векторизация через Sentence Transformers
 from sentence_transformers import SentenceTransformer
-
 st_model = SentenceTransformer('all-MiniLM-L6-v2')
-
 
 def get_sentence_transformer_embedding(text):
     """
@@ -117,7 +108,6 @@ def get_sentence_transformer_embedding(text):
     except Exception as e:
         print("Ошибка при использовании Sentence Transformers:", e)
         return None
-
 
 # 3.3. Векторизация через Yandex GPT (пример, требует адаптации под документацию)
 def get_yandex_embedding(text):
@@ -134,7 +124,6 @@ def get_yandex_embedding(text):
     except Exception as e:
         print("Ошибка при вызове Yandex GPT:", e)
         return None
-
 
 # ------------------------
 # 4. Отправка данных через Webhook
@@ -178,7 +167,6 @@ def send_to_webhook(webhook_url, model_name, original_text, chunks, vectors):
     except Exception as e:
         print("Ошибка при отправке данных на Webhook:", e)
         return False
-
 
 # ------------------------
 # 5. Основная функция обработки
