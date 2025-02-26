@@ -21,27 +21,35 @@ st_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # 1. Извлечение текста из файлов
 def extract_text_from_file(file):
-    if file.name.endswith(".txt") or file.name.endswith(".csv"):
-        return file.read().decode("utf-8")
-    elif file.name.endswith(".pdf"):
-        text = ""
-        with pdfplumber.open(file) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-        return text
-    elif file.name.endswith(".docx"):
-        from docx import Document
-        document = Document(file)
-        return "\n".join([para.text for para in document.paragraphs])
-    return None
+    """ Извлекает текст из загруженного файла (TXT, CSV, PDF, DOCX). """
+    try:
+        if file.name.endswith(".txt") or file.name.endswith(".csv"):
+            return file.read().decode("utf-8")
+        elif file.name.endswith(".pdf"):
+            text = ""
+            with pdfplumber.open(file) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            return text
+        elif file.name.endswith(".docx"):
+            from docx import Document
+            document = Document(file)
+            return "\n".join([para.text for para in document.paragraphs])
+        else:
+            print(f"Формат файла {file.name} не поддерживается.")
+            return None
+    except Exception as e:
+        print(f"Ошибка при обработке файла {file.name}: {e}")
+        return None
 
 
 # 2. Разбиение текста на чанки
 def split_text(text, max_chunk=512, overlap=50):
+    """ Разбивает текст на чанки заданного размера. """
     text = text.strip()
-    if len(text) <= 500:
+    if len(text) <= max_chunk:
         return [text]
 
     chunks = []
@@ -55,6 +63,7 @@ def split_text(text, max_chunk=512, overlap=50):
 
 # 3. Векторизация текста
 def get_openai_embedding(text):
+    """ Получает эмбеддинг от OpenAI. """
     try:
         response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
         return response["data"][0]["embedding"]
@@ -64,6 +73,7 @@ def get_openai_embedding(text):
 
 
 def get_sentence_transformer_embedding(text):
+    """ Получает эмбеддинг от Sentence Transformers. """
     try:
         return st_model.encode(text).tolist()
     except Exception as e:
@@ -72,6 +82,7 @@ def get_sentence_transformer_embedding(text):
 
 
 def get_yandex_embedding(text):
+    """ Получает эмбеддинг от Yandex GPT. """
     headers = {
         "Authorization": f"Api-Key {YANDEX_API_KEY}",
         "Content-Type": "application/json"
@@ -95,6 +106,7 @@ def get_yandex_embedding(text):
 
 # 4. Отправка данных через Webhook
 def send_to_webhook(webhook_url, model_name, chunks, vectors):
+    """ Отправляет данные (чанки и эмбеддинги) на Webhook. """
     data = {
         "status": "success",
         "model": model_name,
@@ -112,6 +124,7 @@ def send_to_webhook(webhook_url, model_name, chunks, vectors):
 
 # 5. Основная функция обработки
 def process_text_files(uploaded_files, manual_text, model_name, webhook_url):
+    """ Обрабатывает файлы и текст, получает эмбеддинги и отправляет их на Webhook. """
     all_text = ""
 
     # Извлекаем текст из файлов
