@@ -6,7 +6,7 @@ import pandas as pd
 import json
 
 # Импорт функции обработки данных из process.py
-from process import process_text_and_files
+from processing import process_text_and_files
 
 # Заголовок приложения
 st.title("🔍 Векторизация текста и файлов")
