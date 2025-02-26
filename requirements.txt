@@ -1,6 +1,10 @@
 streamlit
 requests
-numpy
-pandas
-# и другие пакеты, которые вы используете
+pdfplumber
+sentence-transformers
+openai
+fastapi
+uvicorn
+python-dotenv
 docx2txt
+pandas
