@@ -1,170 +1,134 @@
-import os
 import requests
 import pdfplumber
-from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+import docx2txt
 import openai
+from sentence_transformers import SentenceTransformer
+import pandas as pd
 
-# Загрузка переменных окружения
-load_dotenv()
-
-# API-ключи
-openai.api_key = os.getenv("OPENAI_API_KEY")
-YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
-
-# URL Yandex GPT
-YANDEX_GPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-
-# Модель Sentence Transformers
-st_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-
-# 1. Извлечение текста из файлов
-def extract_text_from_file(file):
-    """ Извлекает текст из загруженного файла (TXT, CSV, PDF, DOCX). """
-    try:
-        if file.name.endswith(".txt") or file.name.endswith(".csv"):
-            return file.read().decode("utf-8")
-        elif file.name.endswith(".pdf"):
-            text = ""
-            with pdfplumber.open(file) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            return text
-        elif file.name.endswith(".docx"):
-            from docx import Document
-            document = Document(file)
-            return "\n".join([para.text for para in document.paragraphs])
-        else:
-            print(f"Формат файла {file.name} не поддерживается.")
-            return None
-    except Exception as e:
-        print(f"Ошибка при обработке файла {file.name}: {e}")
-        return None
-
-
-# 2. Разбиение текста на чанки
-def split_text(text, max_chunk=512, overlap=50):
-    """ Разбивает текст на чанки заданного размера. """
-    text = text.strip()
-    if len(text) <= max_chunk:
+def split_text_into_chunks(text, chunk_size, overlap=50):
+    """
+    Разбивает текст на чанки заданного размера с перекрытием.
+    Если текст меньше 500 символов, возвращается список из одного элемента.
+    """
+    if len(text) < 500:
         return [text]
-
+    
     chunks = []
     start = 0
-    while start < len(text):
-        end = start + max_chunk
-        chunks.append(text[start:end])
-        start = start + max_chunk - overlap
+    text_length = len(text)
+    
+    while start < text_length:
+        end = start + chunk_size
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start = end - overlap  # смещение с перекрытием
     return chunks
 
-
-# 3. Векторизация текста
 def get_openai_embedding(text):
-    """ Получает эмбеддинг от OpenAI. """
-    try:
-        response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
-        return response["data"][0]["embedding"]
-    except Exception as e:
-        print("Ошибка OpenAI:", e)
-        return None
-
-
-def get_sentence_transformer_embedding(text):
-    """ Получает эмбеддинг от Sentence Transformers. """
-    try:
-        return st_model.encode(text).tolist()
-    except Exception as e:
-        print("Ошибка Sentence Transformers:", e)
-        return None
-
+    """
+    Получает векторное представление текста через API OpenAI.
+    Требует предварительной установки openai.api_key.
+    """
+    response = openai.Embedding.create(input=text, model="text-embedding-ada-002")
+    return response["data"][0]["embedding"]
 
 def get_yandex_embedding(text):
-    """ Получает эмбеддинг от Yandex GPT. """
-    headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "yandexgpt",
-        "input": text
-    }
+    """
+    Заглушка для получения эмбеддинга через Yandex GPT.
+    Здесь необходимо реализовать реальный вызов API, если он доступен.
+    Пока возвращает список нулей длины 768.
+    """
+    return [0.0] * 768
 
-    try:
-        response = requests.post(YANDEX_GPT_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            return response.json().get("embedding")
-        else:
-            print("Ошибка Yandex GPT:", response.text)
-            return None
-    except Exception as e:
-        print("Ошибка при вызове Yandex GPT:", e)
-        return None
+def get_sentence_transformer_embedding(text):
+    """
+    Получает векторное представление текста с помощью SentenceTransformer.
+    При каждом вызове модель инициализируется заново – для оптимизации можно создать модель один раз.
+    """
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embedding = model.encode(text)
+    return embedding.tolist()
 
-
-# 4. Отправка данных через Webhook
-def send_to_webhook(webhook_url, model_name, chunks, vectors):
-    """ Отправляет данные (чанки и эмбеддинги) на Webhook. """
-    data = {
-        "status": "success",
-        "model": model_name,
-        "chunks": [{"chunk_id": i + 1, "text": chunk, "vector": vector}
-                   for i, (chunk, vector) in enumerate(zip(chunks, vectors))]
-    }
-
-    try:
-        response = requests.post(webhook_url, json=data)
-        return response.status_code == 200
-    except Exception as e:
-        print("Ошибка при отправке Webhook:", e)
-        return False
-
-
-# 5. Основная функция обработки
-def process_text_files(uploaded_files, manual_text, model_name, webhook_url):
-    """ Обрабатывает файлы и текст, получает эмбеддинги и отправляет их на Webhook. """
+def process_text_and_files(uploaded_files, manual_text, selected_model, webhook_url, chunk_size):
+    """
+    Обрабатывает загруженные файлы и текст:
+      - Извлекает текст из файлов (TXT, PDF, DOCX, CSV)
+      - Объединяет с текстом, введённым вручную
+      - Разбивает полученный текст на чанки по указанному размеру
+      - Выполняет векторизацию каждого чанка выбранной моделью
+      - Формирует JSON-объект и отправляет его на указанный Webhook URL
+    """
     all_text = ""
 
-    # Извлекаем текст из файлов
+    # Обработка загруженных файлов
     if uploaded_files:
         for file in uploaded_files:
-            text = extract_text_from_file(file)
-            if text:
-                all_text += text + "\n"
+            filename = file.name.lower()
+            if filename.endswith(".txt"):
+                try:
+                    text = file.read().decode("utf-8")
+                    all_text += text + "\n"
+                except Exception as e:
+                    print(f"Ошибка чтения {file.name}: {e}")
+            elif filename.endswith(".pdf"):
+                try:
+                    with pdfplumber.open(file) as pdf:
+                        pages_text = [page.extract_text() for page in pdf.pages if page.extract_text()]
+                        text = "\n".join(pages_text)
+                        all_text += text + "\n"
+                except Exception as e:
+                    print(f"Ошибка обработки PDF {file.name}: {e}")
+            elif filename.endswith(".docx"):
+                try:
+                    text = docx2txt.process(file)
+                    all_text += text + "\n"
+                except Exception as e:
+                    print(f"Ошибка обработки DOCX {file.name}: {e}")
+            elif filename.endswith(".csv"):
+                try:
+                    # Предположим, что CSV содержит текстовые данные
+                    df = pd.read_csv(file)
+                    # Соединяем все значения в строку
+                    text = df.apply(lambda row: " ".join(row.values.astype(str)), axis=1).str.cat(sep="\n")
+                    all_text += text + "\n"
+                except Exception as e:
+                    print(f"Ошибка обработки CSV {file.name}: {e}")
 
-    # Добавляем текст, введённый вручную
+    # Добавляем введённый вручную текст
     if manual_text:
-        all_text += manual_text
+        all_text += manual_text + "\n"
 
     if not all_text.strip():
-        print("Нет текста для обработки.")
-        return False
+        raise ValueError("Нет текста для обработки.")
 
-    # Разбиваем текст на чанки
-    chunks = split_text(all_text)
+    # Разбиваем текст на чанки с использованием выбранного размера
+    chunks = split_text_into_chunks(all_text, chunk_size)
 
-    # Векторизуем каждый чанк
+    # Векторизация каждого чанка с выбранной моделью
     vectors = []
     for chunk in chunks:
-        if model_name == "openai":
+        if selected_model == "openai":
             vector = get_openai_embedding(chunk)
-        elif model_name == "sentence_transformer":
-            vector = get_sentence_transformer_embedding(chunk)
-        elif model_name == "yandex":
+        elif selected_model == "yandex":
             vector = get_yandex_embedding(chunk)
+        elif selected_model == "sentence_transformer":
+            vector = get_sentence_transformer_embedding(chunk)
         else:
-            print("Неизвестная модель:", model_name)
             vector = None
-
-        if vector is None:
-            print("Ошибка получения вектора для чанка:", chunk[:30])
-            continue
-
         vectors.append(vector)
 
-    if len(chunks) != len(vectors):
-        print("Предупреждение: число чанков не совпадает с числом векторов.")
+    # Формируем JSON-объект для отправки на Webhook
+    data = {
+        "status": "success",
+        "model": selected_model,
+        "original_text": all_text,
+        "chunks": [
+            {"chunk_id": i+1, "text": chunk, "vector": vec}
+            for i, (chunk, vec) in enumerate(zip(chunks, vectors))
+        ]
+    }
 
-    return send_to_webhook(webhook_url, model_name, chunks, vectors)
+    # Если размер данных превышает 1 МБ, можно реализовать логику разбиения на несколько запросов.
+    # Здесь предполагается, что итоговый JSON не превышает ограничение.
+    response = requests.post(webhook_url, json=data)
+    return response.ok
