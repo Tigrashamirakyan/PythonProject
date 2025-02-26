@@ -1,7 +1,5 @@
 streamlit
 requests
-pdfplumber
-sentence-transformers
-openai
-python-docx
-python-dotenv
+numpy
+pandas
+# и другие пакеты, которые вы используете
