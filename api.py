@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 from process import split_text, vectorize_chunks, split_json_if_large, send_to_webhook
-import json
 
 app = FastAPI()
 
@@ -29,7 +28,7 @@ def vectorize(request: VectorizationRequest):
             for i, (chunk, vector) in enumerate(zip(chunks, vectors))
         ]
     }
-    # Для API используем размер 1 МБ для разделения (можно изменить по необходимости)
+    # Для API используем размер 1 МБ для разделения (при необходимости можно изменить)
     max_size_bytes = 1 * 1024 * 1024
     files_data = split_json_if_large(json_data, max_size_bytes)
     results = []
